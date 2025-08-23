@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"time"
@@ -21,20 +22,20 @@ type Cotacao struct {
 
 func Client() {
 
-	ctx, cancel := context.WithTimeout(context.Background(), 1000*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, "GET", "http://localhost:8080/cotacao", nil)
 	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) {
-			println("Tempo de requisição excedido")
-			return
-		}
-		println("Erro na criação da requisição:", err.Error())
+		log.Println("Erro na criação da requisição:", err.Error())
 		return
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		println("Erro na requisição ao servidor:", err.Error())
+		if errors.Is(err, context.DeadlineExceeded) {
+			log.Println("Tempo de requisição excedido")
+			return
+		}
+		log.Println("Erro na requisição:", err.Error())
 		return
 	}
 	defer resp.Body.Close()
@@ -44,8 +45,9 @@ func Client() {
 		println("Erro ao ler o body da resposta", err.Error())
 		return
 	}
+
 	var c Cotacao
-	err = json.Unmarshal(body, &c)
+	err = json.Unmarshal(body, &c.Dolar)
 	if err != nil {
 		println("Erro ao desserializar a resposta:", err.Error())
 		return

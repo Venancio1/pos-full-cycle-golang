@@ -1,36 +1,42 @@
 package main
 
 import (
+	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"io"
+	"log"
 	"net/http"
+	"time"
 
-	"gorm.io/driver/sqlite"
-	"gorm.io/gorm"
 	_ "modernc.org/sqlite"
 )
 
+var Db *sql.DB
+
 func main() {
-	println("Starting server...")
+	log.Println("Starting server...")
+
+	var err error
+	Db, err = NewDB()
+	if err != nil {
+		log.Println("Erro na conexão com o banco de dados:", err.Error())
+		return
+	}
+
 	Server()
 }
 
-type Cotacoes struct {
+type CotacaoDb struct {
+	ID           uint
 	CotacaoDolar string
 }
 
-type Bid struct {
-	Bid string `json:"bid"`
-}
-
 type Cotacao struct {
-	USDBRL Bid `json:"USDBRL"`
-}
-
-func (c *Cotacao) ToModel() *Cotacoes {
-	return &Cotacoes{
-		CotacaoDolar: c.USDBRL.Bid,
-	}
+	USDBRL struct {
+		Bid string `json:"bid"`
+	} `json:"USDBRL"`
 }
 
 func Server() {
@@ -40,7 +46,7 @@ func Server() {
 }
 
 func cotacaoDolarHandler(w http.ResponseWriter, r *http.Request) {
-	response, err := buscaCotacao()
+	response, err := BuscaCotacao()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -56,11 +62,25 @@ func cotacaoDolarHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write(resp)
 }
 
-func buscaCotacao() (*Bid, error) {
-	resp, err := http.Get("https://economia.awesomeapi.com.br/json/last/USD-BRL")
+func BuscaCotacao() (*string, error) {
+	ctx, cancel := timeoutCtx(200 * time.Millisecond)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "GET", "https://economia.awesomeapi.com.br/json/last/USD-BRL", nil)
 	if err != nil {
+		log.Println("Erro na criação da requisição:", err.Error())
 		return nil, err
 	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			log.Println("Tempo de requisição excedido")
+			return nil, err
+		}
+		log.Println("Erro na requisição:", err.Error())
+		return nil, err
+	}
+
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
@@ -72,36 +92,46 @@ func buscaCotacao() (*Bid, error) {
 		return nil, err
 	}
 
-	dataBase, err := NewDB()
-	if err != nil {
-		println("Erro na conexão com o banco de dados:", err.Error())
+	var cdb CotacaoDb
+	cdb.CotacaoDolar = c.USDBRL.Bid
+
+	ctx_db, cancel := timeoutCtx(10 * time.Millisecond)
+	defer cancel()
+	if err := SaveCotacao(ctx_db, Db, &cdb); err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			log.Println("Tempo de requisição excedido")
+			return nil, err
+		}
 		return nil, err
 	}
-	if err := saveCotacao(dataBase, c.ToModel()); err != nil {
-		return nil, err
-	}
-	return &c.USDBRL, nil
+
+	return &c.USDBRL.Bid, nil
 }
 
-func NewDB() (*gorm.DB, error) {
-	// Config padrão "modernc.org/sqlite" para não depender de compilador C.
-	db, err := gorm.Open(sqlite.New(sqlite.Config{
-		DriverName: "sqlite",
-		DSN:        "cotacoes.db",
-	}), &gorm.Config{}) // db, err := gorm.Open(sqlite.Open("cotacao.db"), &gorm.Config{})
-
+func NewDB() (*sql.DB, error) {
+	log.Println("Iniciando banco de dados...")
+	db, err := sql.Open("sqlite", "cotacoes.db")
 	if err != nil {
 		return nil, err
 	}
-	if err := db.AutoMigrate(&Cotacoes{}); err != nil {
+	createTable := `
+    CREATE TABLE IF NOT EXISTS cotacoes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        cotacao TEXT NOT NULL
+    );`
+
+	if _, err := db.Exec(createTable); err != nil {
 		return nil, err
 	}
 	return db, nil
 }
 
-func saveCotacao(db *gorm.DB, cotacao *Cotacoes) error {
-	if err := db.Create(cotacao).Error; err != nil {
-		return err
-	}
-	return nil
+func SaveCotacao(ctx context.Context, db *sql.DB, cotacao *CotacaoDb) error {
+	query := `INSERT INTO cotacoes (cotacao) VALUES (?)`
+	_, err := db.Exec(query, cotacao.CotacaoDolar)
+	return err
+}
+
+func timeoutCtx(d time.Duration) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), d)
 }
