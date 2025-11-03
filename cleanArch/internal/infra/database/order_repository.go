@@ -3,7 +3,7 @@ package database
 import (
 	"database/sql"
 
-	"github.com/devfullcycle/20-CleanArch/internal/entity"
+	"github.com/pos-full-cycle-golang/cleanArch/internal/entity"
 )
 
 type OrderRepository struct {

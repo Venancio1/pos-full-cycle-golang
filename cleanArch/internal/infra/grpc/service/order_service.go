@@ -3,9 +3,9 @@ package service
 import (
 	"context"
 
-	"github.com/devfullcycle/20-CleanArch/internal/infra/grpc/pb"
-	"github.com/devfullcycle/20-CleanArch/internal/usecase"
 	empty "github.com/golang/protobuf/ptypes/empty"
+	"github.com/pos-full-cycle-golang/cleanArch/internal/infra/grpc/pb"
+	"github.com/pos-full-cycle-golang/cleanArch/internal/usecase"
 )
 
 type OrderService struct {
