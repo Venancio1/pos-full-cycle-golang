@@ -6,19 +6,47 @@ package graph
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/pos-full-cycle-golang/cleanArch/internal/infra/graph/model"
+	"github.com/pos-full-cycle-golang/cleanArch/internal/usecase"
 )
 
 // CreateOrder is the resolver for the createOrder field.
 func (r *mutationResolver) CreateOrder(ctx context.Context, input *model.OrderInput) (*model.Order, error) {
-	panic(fmt.Errorf("not implemented: CreateOrder - createOrder"))
+	dto := usecase.OrderInputDTO{
+		ID:    input.ID,
+		Price: float64(input.Price),
+		Tax:   float64(input.Tax),
+	}
+	output, err := r.CreateOrderUseCase.Execute(dto)
+	if err != nil {
+		return nil, err
+	}
+	return &model.Order{
+		ID:         output.ID,
+		Price:      float64(output.Price),
+		Tax:        float64(output.Tax),
+		FinalPrice: float64(output.FinalPrice),
+	}, nil
 }
 
 // ListOrders is the resolver for the listOrders field.
 func (r *queryResolver) ListOrders(ctx context.Context) ([]*model.Order, error) {
-	panic(fmt.Errorf("not implemented: ListOrders - listOrders"))
+	listOrders, err := r.ListOrdersUseCase.ListOrders()
+	if err != nil {
+		return nil, err
+	}
+
+	var orders []*model.Order
+	for _, order := range listOrders {
+		orders = append(orders, &model.Order{
+			ID:         order.ID,
+			Price:      float64(order.Price),
+			Tax:        float64(order.Tax),
+			FinalPrice: float64(order.FinalPrice),
+		})
+	}
+	return orders, nil
 }
 
 // Mutation returns MutationResolver implementation.
