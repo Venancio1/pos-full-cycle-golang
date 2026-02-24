@@ -1,0 +1,59 @@
+version: '3'
+
+services:
+  apptemperatura:
+    build:
+      context: ./apptemperatura
+      dockerfile: Dockerfile
+    container_name: apptemperatura
+    ports:
+      - "8081:8080"
+    environment:
+      - PORT=8080
+    depends_on:
+      - otel-collector
+    networks:
+      - observability
+
+  appvalidator:
+    build:
+      context: ./appvalidator
+      dockerfile: Dockerfile
+    container_name: appvalidator
+    ports:
+      - "8082:8080"
+    environment:
+      - PORT=8080
+    depends_on:
+      - apptemperatura
+      - otel-collector
+    networks:
+      - observability
+
+  otel-collector:
+    image: otel/opentelemetry-collector:latest
+    restart: always
+    container_name: otel-collector
+    volumes:
+      - ./.docker/otel-collector-config.yaml:/etc/otel-collector-config.yaml
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    ports:
+      - "4317:4317"
+      - "4318:4318" 
+    networks:
+      - observability
+
+  zipkin:
+    image: openzipkin/zipkin:latest 
+    restart: always
+    container_name: zipkin
+    ports:
+      - "9411:9411"
+    networks:
+      - observability
+
+
+
+networks:
+  observability:
+    driver: bridge
